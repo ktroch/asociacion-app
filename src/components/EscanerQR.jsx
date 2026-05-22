@@ -3,77 +3,79 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { X } from 'lucide-react'
 
 export default function EscanerQR({ onResultado, onCerrar }) {
-  const scannerRef = useRef(null)
-  const [iniciado, setIniciado] = useState(false)
-  const idDiv = 'qr-reader'
+  const scannerRef  = useRef(null)
+  const [estado, setEstado] = useState('iniciando')
+  const idDiv = 'qr-reader-box'
 
   useEffect(() => {
     let scanner
+    let montado = true
 
     const iniciar = async () => {
-      await new Promise(r => setTimeout(r, 300))
-
-      scanner = new Html5Qrcode(idDiv, { verbose: false })
-      scannerRef.current = scanner
+      await new Promise(r => setTimeout(r, 400))
+      if (!montado) return
 
       try {
+        scanner = new Html5Qrcode(idDiv, { verbose: false })
+        scannerRef.current = scanner
+
         await scanner.start(
           { facingMode: 'environment' },
-          {
-            fps: 15,
-            qrbox: { width: 230, height: 230 },
-            aspectRatio: 1.0,
-            disableFlip: false,
-          },
+          { fps: 10, qrbox: 200 },
           (texto) => {
-            scanner.stop().finally(() => onResultado(texto))
+            if (!montado) return
+            montado = false
+            scanner.stop().catch(() => {}).finally(() => onResultado(texto))
           },
           () => {}
         )
-        setIniciado(true)
+
+        if (montado) setEstado('listo')
       } catch (err) {
-        console.error('Error cámara:', err)
+        console.error(err)
+        if (montado) setEstado('error')
       }
     }
 
     iniciar()
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.isScanning &&
-          scannerRef.current.stop().catch(() => {})
-      }
+      montado = false
+      scannerRef.current?.isScanning &&
+        scannerRef.current.stop().catch(() => {})
     }
   }, [])
 
   const cerrar = () => {
-    if (scannerRef.current?.isScanning) {
-      scannerRef.current.stop().finally(onCerrar)
+    const scanner = scannerRef.current
+    if (scanner?.isScanning) {
+      scanner.stop().catch(() => {}).finally(onCerrar)
     } else {
       onCerrar()
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4">
-      <div className="bg-white rounded-2xl overflow-hidden w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl overflow-hidden w-full max-w-xs">
 
+        {/* Header */}
         <div className="bg-[#1e3a6e] px-4 py-3 flex items-center justify-between">
-          <p className="text-white font-medium text-sm">Escanear tarjeta QR</p>
-          <button onClick={cerrar} className="text-white hover:text-red-300 transition-colors">
+          <p className="text-white font-medium text-sm">Escanear QR</p>
+          <button onClick={cerrar} className="text-white">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-4">
-          <div
-            id={idDiv}
-            className="w-full rounded-xl overflow-hidden"
-          />
-          <p className="text-center text-gray-400 text-xs mt-3">
-            {iniciado
-              ? 'Apunta el QR al centro del recuadro'
-              : 'Iniciando cámara...'}
+        {/* Área del escáner — solo un div limpio, sin nada dentro */}
+        <div className="p-3">
+          <div id={idDiv} className="rounded-xl overflow-hidden w-full" />
+
+          <p className="text-center text-xs mt-3 pb-1
+            {estado === 'error' ? 'text-red-400' : 'text-gray-400'}">
+            {estado === 'iniciando' && 'Iniciando cámara...'}
+            {estado === 'listo'     && 'Apunta el QR al recuadro'}
+            {estado === 'error'     && 'No se pudo acceder a la cámara'}
           </p>
         </div>
 

@@ -1,4 +1,4 @@
-import { Users, CreditCard, Package, HandHeart, Star, BarChart3, LogOut } from 'lucide-react'
+import { Users, CreditCard, Package, HandHeart, Star, BarChart3, LogOut, UserCog, TrendingDown } from 'lucide-react'
 import { getUsuario, cerrarSesion } from '../../utils/auth'
 
 const modulos = [
@@ -8,6 +8,9 @@ const modulos = [
   { titulo: 'Donaciones',     icono: HandHeart,    ruta: '/funcionario/donaciones'    },
   { titulo: 'Patrocinadores', icono: Star,         ruta: '/funcionario/patrocinadores'},
   { titulo: 'Reportes',       icono: BarChart3,    ruta: '/funcionario/reportes'      },
+  { titulo: 'Personal', icono: UserCog, ruta: '/funcionario/personal' },
+  { titulo: 'Inventario', icono: Package, ruta: '/funcionario/inventario' },
+  { titulo: 'Gastos', icono: TrendingDown, ruta: '/funcionario/gastos' },
 ]
 
 export default function DashboardFuncionario() {

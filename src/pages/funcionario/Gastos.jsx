@@ -2,36 +2,66 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import { cerrarSesion } from '../../utils/auth'
+import FiltroPeriodo from '../../components/FiltroPeriodo'
 import { ArrowLeft, LogOut, Plus, Search, ChevronRight, TrendingDown } from 'lucide-react'
 
 const CATEGORIAS = {
-  alimentacion:   { label: 'Alimentación',    color: 'bg-orange-100 text-orange-700' },
-  transporte:     { label: 'Transporte',      color: 'bg-blue-100 text-blue-700'    },
-  materiales:     { label: 'Materiales',      color: 'bg-purple-100 text-purple-700'},
-  servicios:      { label: 'Servicios',       color: 'bg-teal-100 text-teal-700'    },
-  eventos:        { label: 'Eventos',         color: 'bg-pink-100 text-pink-700'    },
+  alimentacion:   { label: 'Alimentación',   color: 'bg-orange-100 text-orange-700'  },
+  transporte:     { label: 'Transporte',     color: 'bg-blue-100 text-blue-700'      },
+  materiales:     { label: 'Materiales',     color: 'bg-purple-100 text-purple-700'  },
+  servicios:      { label: 'Servicios',      color: 'bg-teal-100 text-teal-700'      },
+  eventos:        { label: 'Eventos',        color: 'bg-pink-100 text-pink-700'      },
   arriendo:       { label: 'Arriendo',       color: 'bg-indigo-100 text-indigo-700'  },
   sueldos:        { label: 'Sueldos',        color: 'bg-cyan-100 text-cyan-700'      },
-  administrativo: { label: 'Administrativo',  color: 'bg-gray-100 text-gray-700'    },
-  otro:           { label: 'Otro',            color: 'bg-yellow-100 text-yellow-700'},
+  administrativo: { label: 'Administrativo', color: 'bg-gray-100 text-gray-700'      },
+  otro:           { label: 'Otro',           color: 'bg-yellow-100 text-yellow-700'  },
 }
 
 export default function Gastos() {
-  const navigate                  = useNavigate()
-  const [gastos, setGastos]       = useState([])
-  const [busqueda, setBusqueda]   = useState('')
-  const [filtro, setFiltro]       = useState('todos')
-  const [cargando, setCargando]   = useState(true)
+  const navigate                              = useNavigate()
+  const [gastos, setGastos]                   = useState([])
+  const [busqueda, setBusqueda]               = useState('')
+  const [filtro, setFiltro]                   = useState('todos')
+  const [cargando, setCargando]               = useState(true)
+  const [periodo, setPeriodo]                 = useState({ mes: '', anio: '' })
+  const [balanceDinero, setBalanceDinero]     = useState({ donado: 0, gastado: 0 })
 
-  useEffect(() => { cargar() }, [])
+  useEffect(() => { cargar() }, [periodo])
 
   const cargar = async () => {
     setCargando(true)
-    const { data } = await supabase
+
+    // ── Gastos del período ──
+    let query = supabase
       .from('gasto')
       .select('*')
       .order('fecha', { ascending: false })
+
+    if (periodo.anio) {
+      const inicio = `${periodo.anio}-${periodo.mes || '01'}-01`
+      const fin    = periodo.mes
+        ? `${periodo.anio}-${periodo.mes}-31`
+        : `${periodo.anio}-12-31`
+      query = query.gte('fecha', inicio).lte('fecha', fin)
+    }
+
+    const { data } = await query
     setGastos(data || [])
+
+    // ── Balance financiero general (sin filtro de período) ──
+    const { data: donacionesDinero } = await supabase
+      .from('donacion')
+      .select('monto')
+      .eq('tipo', 'dinero')
+
+    const { data: todosGastos } = await supabase
+      .from('gasto')
+      .select('monto')
+
+    const totalDonado  = (donacionesDinero || []).reduce((acc, d) => acc + Number(d.monto || 0), 0)
+    const totalGastado = (todosGastos      || []).reduce((acc, g) => acc + Number(g.monto || 0), 0)
+    setBalanceDinero({ donado: totalDonado, gastado: totalGastado })
+
     setCargando(false)
   }
 
@@ -40,8 +70,6 @@ export default function Gastos() {
     const coincideBusqueda  = g.descripcion.toLowerCase().includes(busqueda.toLowerCase())
     return coincideCategoria && coincideBusqueda
   })
-
-  const totalGastado = gastos.reduce((acc, g) => acc + Number(g.monto), 0)
 
   const formatFecha = (fecha) => {
     if (!fecha) return '—'
@@ -66,13 +94,41 @@ export default function Gastos() {
 
       <main className="p-4 max-w-2xl mx-auto">
 
-        {/* Resumen total */}
+        {/* Balance financiero general */}
         <div className="bg-[#1e3a6e] rounded-2xl p-4 mb-4 shadow">
-          <p className="text-blue-200 text-xs mb-1">Total gastado</p>
-          <p className="text-white text-3xl font-bold">
-            {totalGastado.toFixed(2)} <span className="text-lg text-blue-200">CHF</span>
-          </p>
-          <p className="text-blue-200 text-xs mt-1">{gastos.length} registros</p>
+          <p className="text-blue-200 text-xs mb-3">Balance financiero general</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-blue-200 text-xs">Donado</p>
+              <p className="text-white font-bold text-lg">
+                {balanceDinero.donado.toFixed(2)}
+                <span className="text-xs text-blue-200 ml-1">CHF</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-xs">Gastado</p>
+              <p className="text-[#f87171] font-bold text-lg">
+                {balanceDinero.gastado.toFixed(2)}
+                <span className="text-xs text-blue-200 ml-1">CHF</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-blue-200 text-xs">Disponible</p>
+              <p className={`font-bold text-lg ${
+                balanceDinero.donado - balanceDinero.gastado >= 0
+                  ? 'text-green-300'
+                  : 'text-red-400'
+              }`}>
+                {(balanceDinero.donado - balanceDinero.gastado).toFixed(2)}
+                <span className="text-xs text-blue-200 ml-1">CHF</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtro período */}
+        <div className="mb-3">
+          <FiltroPeriodo valor={periodo} onChange={setPeriodo} />
         </div>
 
         {/* Filtro por categoría */}

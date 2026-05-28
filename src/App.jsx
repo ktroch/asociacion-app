@@ -19,6 +19,8 @@ import DetalleDonacion from './pages/funcionario/DetalleDonacion'
 import Inventario      from './pages/funcionario/Inventario'
 import Gastos     from './pages/funcionario/Gastos'
 import NuevoGasto from './pages/funcionario/NuevoGasto'
+import DetalleGasto from './pages/funcionario/DetalleGasto'
+import Ingresos     from './pages/funcionario/Ingresos'
 
 export default function App() {
   return (
@@ -117,6 +119,16 @@ export default function App() {
       <Route path="/funcionario/gastos/nuevo" element={
         <RutaProtegida rolRequerido="funcionario">
           <NuevoGasto />
+        </RutaProtegida>
+      } />
+      <Route path="/funcionario/gastos/:id" element={
+        <RutaProtegida rolRequerido="funcionario">
+          <DetalleGasto />
+        </RutaProtegida>
+      } />
+      <Route path="/funcionario/ingresos" element={
+        <RutaProtegida rolRequerido="funcionario">
+          <Ingresos />
         </RutaProtegida>
       } />
     </Routes>

@@ -38,12 +38,22 @@ export default function NuevoGasto() {
   useEffect(() => { cargarFuncionario() }, [])
 
   const cargarFuncionario = async () => {
-    const { data } = await supabase
+    console.log('Buscando funcionario para persona_id:', usuario?.id)
+    const { data, error } = await supabase
       .from('funcionario')
       .select('id')
       .eq('persona_id', usuario?.id)
-      .single()
-    setFuncionarioId(data?.id || null)
+
+    if (error) {
+      console.error('Error buscando funcionario:', error)
+      return
+    }
+
+    if (data && data.length > 0) {
+      setFuncionarioId(data[0].id)
+    } else {
+      console.warn('No se encontró funcionario para persona_id:', usuario?.id)
+    }
   }
 
   const set = (campo) => (e) => setForm(f => ({ ...f, [campo]: e.target.value }))
@@ -63,10 +73,24 @@ export default function NuevoGasto() {
       let comprobanteUrl = null
 
       if (comprobanteFile) {
-        const path = `comprobantes/${Date.now()}-${comprobanteFile.name}`
-        await supabase.storage.from('personas').upload(path, comprobanteFile, { upsert: true })
-        const { data } = supabase.storage.from('personas').getPublicUrl(path)
-        comprobanteUrl = data.publicUrl
+        const extension = comprobanteFile.name.split('.').pop()
+        const nombreArchivo = `comprobantes/${Date.now()}.${extension}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('personas')
+          .upload(nombreArchivo, comprobanteFile, {
+            upsert: true,
+            contentType: comprobanteFile.type,
+          })
+
+        if (uploadError) {
+          console.error('Error subiendo comprobante:', uploadError)
+        } else {
+          const { data: urlData } = supabase.storage
+            .from('personas')
+            .getPublicUrl(nombreArchivo)
+          comprobanteUrl = urlData.publicUrl
+        }
       }
 
       const { error: err } = await supabase.from('gasto').insert({

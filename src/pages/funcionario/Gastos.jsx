@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import { cerrarSesion } from '../../utils/auth'
 import FiltroPeriodo from '../../components/FiltroPeriodo'
-import { ArrowLeft, LogOut, Plus, Search, ChevronRight, TrendingDown } from 'lucide-react'
+import { ArrowLeft, LogOut, Plus, Search, ChevronRight, TrendingDown, Clock, CheckCircle } from 'lucide-react'
 
 const CATEGORIAS = {
   alimentacion:   { label: 'Alimentación',   color: 'bg-orange-100 text-orange-700'  },
@@ -18,20 +18,24 @@ const CATEGORIAS = {
 }
 
 export default function Gastos() {
-  const navigate                              = useNavigate()
-  const [gastos, setGastos]                   = useState([])
-  const [busqueda, setBusqueda]               = useState('')
-  const [filtro, setFiltro]                   = useState('todos')
-  const [cargando, setCargando]               = useState(true)
-  const [periodo, setPeriodo]                 = useState({ mes: '', anio: '' })
-  const [balanceDinero, setBalanceDinero]     = useState({ donado: 0, gastado: 0 })
+  const navigate                        = useNavigate()
+  const [gastos, setGastos]             = useState([])
+  const [busqueda, setBusqueda]         = useState('')
+  const [filtro, setFiltro]             = useState('todos')
+  const [filtroEstado, setFiltroEstado] = useState('todos')
+  const [cargando, setCargando]         = useState(true)
+  const [periodo, setPeriodo]           = useState({ mes: '', anio: '' })
+  const [balance, setBalance]           = useState({
+    totalDonado: 0, gastadoDonaciones: 0,
+    totalIngresoPropio: 0, gastadoPropio: 0,
+    pendiente: 0,
+  })
 
   useEffect(() => { cargar() }, [periodo])
 
   const cargar = async () => {
     setCargando(true)
 
-    // ── Gastos del período ──
     let query = supabase
       .from('gasto')
       .select('*')
@@ -48,27 +52,37 @@ export default function Gastos() {
     const { data } = await query
     setGastos(data || [])
 
-    // ── Balance financiero general (sin filtro de período) ──
-    const { data: donacionesDinero } = await supabase
-      .from('donacion')
-      .select('monto')
-      .eq('tipo', 'dinero')
+    const [
+      { data: donaciones },
+      { data: todosGastos },
+      { data: ingresos },
+    ] = await Promise.all([
+      supabase.from('donacion').select('monto').eq('tipo', 'dinero'),
+      supabase.from('gasto').select('monto, estado, fuente_pago'),
+      supabase.from('ingreso_propio').select('monto'),
+    ])
 
-    const { data: todosGastos } = await supabase
-      .from('gasto')
-      .select('monto')
+    const totalDonado        = (donaciones  || []).reduce((a, d) => a + Number(d.monto || 0), 0)
+    const totalIngresoPropio = (ingresos    || []).reduce((a, i) => a + Number(i.monto || 0), 0)
+    const gastadoDonaciones  = (todosGastos || [])
+      .filter(g => g.estado === 'pagado' && g.fuente_pago === 'donaciones')
+      .reduce((a, g) => a + Number(g.monto || 0), 0)
+    const gastadoPropio      = (todosGastos || [])
+      .filter(g => g.estado === 'pagado' && g.fuente_pago === 'ingresos_propios')
+      .reduce((a, g) => a + Number(g.monto || 0), 0)
+    const pendiente          = (todosGastos || [])
+      .filter(g => g.estado === 'pendiente')
+      .reduce((a, g) => a + Number(g.monto || 0), 0)
 
-    const totalDonado  = (donacionesDinero || []).reduce((acc, d) => acc + Number(d.monto || 0), 0)
-    const totalGastado = (todosGastos      || []).reduce((acc, g) => acc + Number(g.monto || 0), 0)
-    setBalanceDinero({ donado: totalDonado, gastado: totalGastado })
-
+    setBalance({ totalDonado, gastadoDonaciones, totalIngresoPropio, gastadoPropio, pendiente })
     setCargando(false)
   }
 
   const filtrados = gastos.filter(g => {
     const coincideCategoria = filtro === 'todos' || g.categoria === filtro
+    const coincideEstado    = filtroEstado === 'todos' || g.estado === filtroEstado
     const coincideBusqueda  = g.descripcion.toLowerCase().includes(busqueda.toLowerCase())
-    return coincideCategoria && coincideBusqueda
+    return coincideCategoria && coincideEstado && coincideBusqueda
   })
 
   const formatFecha = (fecha) => {
@@ -77,6 +91,10 @@ export default function Gastos() {
       day: '2-digit', month: '2-digit', year: 'numeric'
     })
   }
+
+  const disponibleDonaciones = balance.totalDonado - balance.gastadoDonaciones
+  const disponiblePropio     = balance.totalIngresoPropio - balance.gastadoPropio
+  const totalDisponible      = disponibleDonaciones + disponiblePropio
 
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
@@ -94,58 +112,129 @@ export default function Gastos() {
 
       <main className="p-4 max-w-2xl mx-auto">
 
-        {/* Balance financiero general */}
-        <div className="bg-[#1e3a6e] rounded-2xl p-4 mb-4 shadow">
-          <p className="text-blue-200 text-xs mb-3">Balance financiero general</p>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <p className="text-blue-200 text-xs">Donado</p>
-              <p className="text-white font-bold text-lg">
-                {balanceDinero.donado.toFixed(2)}
-                <span className="text-xs text-blue-200 ml-1">CHF</span>
-              </p>
-            </div>
-            <div>
-              <p className="text-blue-200 text-xs">Gastado</p>
-              <p className="text-[#f87171] font-bold text-lg">
-                {balanceDinero.gastado.toFixed(2)}
-                <span className="text-xs text-blue-200 ml-1">CHF</span>
-              </p>
-            </div>
-            <div>
-              <p className="text-blue-200 text-xs">Disponible</p>
-              <p className={`font-bold text-lg ${
-                balanceDinero.donado - balanceDinero.gastado >= 0
-                  ? 'text-green-300'
-                  : 'text-red-400'
-              }`}>
-                {(balanceDinero.donado - balanceDinero.gastado).toFixed(2)}
-                <span className="text-xs text-blue-200 ml-1">CHF</span>
-              </p>
+        {/* Balance segregado */}
+        <div className="bg-[#1e3a6e] rounded-2xl p-4 mb-3 shadow">
+          <p className="text-blue-200 text-xs font-medium mb-3">Balance financiero general</p>
+
+          {/* Fondos donados */}
+          <div className="bg-white/10 rounded-xl p-3 mb-2">
+            <p className="text-blue-200 text-xs mb-2 font-medium">Fondos donados</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <p className="text-blue-300 text-xs">Recibido</p>
+                <p className="text-white font-bold">
+                  {balance.totalDonado.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-xs">Usado</p>
+                <p className="text-red-300 font-bold">
+                  {balance.gastadoDonaciones.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-xs">Disponible</p>
+                <p className={`font-bold ${disponibleDonaciones >= 0 ? 'text-green-300' : 'text-red-400'}`}>
+                  {disponibleDonaciones.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
             </div>
           </div>
+
+          {/* Fondos propios */}
+          <div className="bg-white/10 rounded-xl p-3 mb-3">
+            <p className="text-blue-200 text-xs mb-2 font-medium">Fondos propios (actividades)</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <p className="text-blue-300 text-xs">Generado</p>
+                <p className="text-white font-bold">
+                  {balance.totalIngresoPropio.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-xs">Usado</p>
+                <p className="text-red-300 font-bold">
+                  {balance.gastadoPropio.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-blue-300 text-xs">Disponible</p>
+                <p className={`font-bold ${disponiblePropio >= 0 ? 'text-green-300' : 'text-red-400'}`}>
+                  {disponiblePropio.toFixed(2)}
+                  <span className="text-xs text-blue-300 ml-1">CHF</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Total + pendientes */}
+          <div className="flex items-center justify-between border-t border-white/20 pt-3">
+            <div>
+              <p className="text-blue-200 text-xs">Total disponible</p>
+              <p className={`text-xl font-bold ${totalDisponible >= 0 ? 'text-green-300' : 'text-red-400'}`}>
+                {totalDisponible.toFixed(2)}
+                <span className="text-sm text-blue-300 ml-1">CHF</span>
+              </p>
+            </div>
+            {balance.pendiente > 0 && (
+              <div className="text-right">
+                <p className="text-yellow-300 text-xs">Gastos pendientes</p>
+                <p className="text-yellow-300 font-bold">
+                  {balance.pendiente.toFixed(2)}
+                  <span className="text-xs ml-1">CHF</span>
+                </p>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Acceso a ingresos propios */}
+        <button
+          onClick={() => navigate('/funcionario/ingresos')}
+          className="w-full bg-white border border-gray-200 rounded-xl py-2.5 text-sm text-[#1e3a6e] font-medium flex items-center justify-center gap-2 hover:bg-[#eef2fa] transition-colors mb-4"
+        >
+          Ver ingresos propios →
+        </button>
 
         {/* Filtro período */}
         <div className="mb-3">
           <FiltroPeriodo valor={periodo} onChange={setPeriodo} />
         </div>
 
-        {/* Filtro por categoría */}
+        {/* Filtro estado */}
+        <div className="flex gap-2 mb-3">
+          {[
+            { value: 'todos',     label: 'Todos'      },
+            { value: 'pendiente', label: 'Pendientes' },
+            { value: 'pagado',    label: 'Pagados'    },
+          ].map(op => (
+            <button key={op.value} onClick={() => setFiltroEstado(op.value)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors border
+                ${filtroEstado === op.value
+                  ? 'bg-[#1e3a6e] text-white border-[#1e3a6e]'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-[#1e3a6e]'
+                }`}>
+              {op.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Filtro categoría */}
         <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
           <button onClick={() => setFiltro('todos')}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border flex-shrink-0
-              ${filtro === 'todos'
-                ? 'bg-[#1e3a6e] text-white border-[#1e3a6e]'
-                : 'bg-white text-gray-500 border-gray-200'}`}>
-            Todos
+              ${filtro === 'todos' ? 'bg-[#1e3a6e] text-white border-[#1e3a6e]' : 'bg-white text-gray-500 border-gray-200'}`}>
+            Todas
           </button>
           {Object.entries(CATEGORIAS).map(([key, val]) => (
             <button key={key} onClick={() => setFiltro(key)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border flex-shrink-0
-                ${filtro === key
-                  ? 'bg-[#1e3a6e] text-white border-[#1e3a6e]'
-                  : 'bg-white text-gray-500 border-gray-200'}`}>
+                ${filtro === key ? 'bg-[#1e3a6e] text-white border-[#1e3a6e]' : 'bg-white text-gray-500 border-gray-200'}`}>
               {val.label}
             </button>
           ))}
@@ -172,7 +261,7 @@ export default function Gastos() {
         ) : filtrados.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <TrendingDown size={40} className="mx-auto mb-2 opacity-30" />
-            <p>No hay gastos registrados</p>
+            <p>No hay gastos en este período</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -187,7 +276,18 @@ export default function Gastos() {
                       {CATEGORIAS[g.categoria]?.label}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400">{formatFecha(g.fecha)}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {g.estado === 'pendiente'
+                      ? <span className="flex items-center gap-1 text-xs text-yellow-600">
+                          <Clock size={11} /> Pendiente
+                        </span>
+                      : <span className="flex items-center gap-1 text-xs text-green-600">
+                          <CheckCircle size={11} /> Pagado
+                        </span>
+                    }
+                    <span className="text-gray-300 text-xs">·</span>
+                    <p className="text-xs text-gray-400">{formatFecha(g.fecha)}</p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                   <p className="font-bold text-[#c0152a] text-sm">{Number(g.monto).toFixed(2)} {g.moneda}</p>
